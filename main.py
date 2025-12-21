@@ -10,6 +10,9 @@ from typing import Any
 
 from handlers.base_handler import BaseHandler
 from handlers.ffmpeg_extract_handler import FFmpegExtractHandler
+from handlers.motion_analysis_optical_flow_handler import (
+    MotionAnalysisOpticalFlowHandler,
+)
 from handlers.read_file_handler import ReadFileHandler
 
 
@@ -26,6 +29,7 @@ def main() -> None:
     handlers: list[BaseHandler] = [
         ReadFileHandler(),
         FFmpegExtractHandler(),
+        MotionAnalysisOpticalFlowHandler(),
     ]
 
     # Run pipeline
