@@ -13,6 +13,14 @@ from handlers.motion_analysis_optical_flow_handler import (
 from handlers.read_file_handler import ReadFileHandler
 from handlers.speech_to_text_handler import SpeechToTextHandler
 from handlers.sentiment_analysis_handler import SentimentAnalysisHandler
+from handlers.humor_detection_handler import HumorDetectionHandler
+from handlers.topic_segmentation_handler import TopicSegmentationHandler
+from handlers.audio_events_handler import AudioEventsHandler
+from handlers.scene_change_handler import SceneChangeHandler
+from handlers.fusion_timeline_handler import FusionTimelineHandler
+from handlers.highlight_detection_handler import HighlightDetectionHandler
+from handlers.chapter_builder_handler import ChapterBuilderHandler
+from handlers.finalize_analysis_handler import FinalizeAnalysisHandler
 
 
 def format_json(data: Any, indent: int = 2, max_items: int = 10) -> str:
@@ -87,6 +95,14 @@ def main() -> None:
         AudioFeaturesHandler(),
         SpeechToTextHandler(),
         SentimentAnalysisHandler(),
+        HumorDetectionHandler(),
+        TopicSegmentationHandler(),
+        AudioEventsHandler(),
+        SceneChangeHandler(),
+        FusionTimelineHandler(),
+        HighlightDetectionHandler(),
+        ChapterBuilderHandler(),
+        FinalizeAnalysisHandler(),
     ]
 
     # Run pipeline
