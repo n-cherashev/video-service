@@ -21,6 +21,8 @@ from handlers.fusion_timeline_handler import FusionTimelineHandler
 from handlers.highlight_detection_handler import HighlightDetectionHandler
 from handlers.chapter_builder_handler import ChapterBuilderHandler
 from handlers.finalize_analysis_handler import FinalizeAnalysisHandler
+from handlers.shot_boundary_handler import ShotBoundaryHandler
+from handlers.scene_grouping_handler import SceneGroupingHandler
 
 __all__ = [
     "BaseHandler",
@@ -36,6 +38,8 @@ __all__ = [
     "TopicSegmentationHandler",
     "AudioEventsHandler",
     "SceneChangeHandler",
+    "ShotBoundaryHandler",
+    "SceneGroupingHandler",
     "FusionTimelineHandler",
     "HighlightDetectionHandler",
     "ChapterBuilderHandler",
