@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-Main entry point for video processing pipeline.
-
-Usage:
-    python main.py
-"""
-
 import json
 from typing import Any, Dict, List
 
@@ -19,6 +11,8 @@ from handlers.motion_analysis_optical_flow_handler import (
     MotionAnalysisOpticalFlowHandler,
 )
 from handlers.read_file_handler import ReadFileHandler
+from handlers.speech_to_text_handler import SpeechToTextHandler
+from handlers.sentiment_analysis_handler import SentimentAnalysisHandler
 
 
 def format_json(data: Any, indent: int = 2, max_items: int = 10) -> str:
@@ -91,6 +85,8 @@ def main() -> None:
         MotionAnalysisFrameDiffHandler(),
         MotionAnalysisOpticalFlowHandler(),
         AudioFeaturesHandler(),
+        SpeechToTextHandler(),
+        SentimentAnalysisHandler(),
     ]
 
     # Run pipeline

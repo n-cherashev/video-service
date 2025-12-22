@@ -145,3 +145,4 @@ class MotionAnalysisFrameDiffHandler(BaseHandler):
 
         return heatmap, summary
 
+
