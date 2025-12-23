@@ -138,19 +138,32 @@ Scenes + Highlights → Chapter Builder → chapters[{start,end,title,desc}]
 
 ## 🚀 Запуск
 
+### 1. Установка
+
 ```bash
 pip install -e .
-python main.py video.mp4
 ```
 
-**Вывод**:
+### 2. Конфигурация
 
+Создайте `.env` в корне проекта (или задайте переменные окружения напрямую):
+
+```bash
+VIDEO_SERVICE_INPUT_VIDEO_PATH=/abs/path/to/video.mp4
+VIDEO_SERVICE_MIN_HIGHLIGHT_DURATION_SEC=30
+VIDEO_SERVICE_MIN_SCENE_DURATION_SEC=10
+VIDEO_SERVICE_ENABLE_STT=true
+VIDEO_SERVICE_ENABLE_SENTIMENT=true
+VIDEO_SERVICE_ENABLE_HUMOR=true
 ```
-✅ Pipeline: 15s
-📊 Timeline: 174 points
-📊 Highlights: 12 (3 action, 2 comedy)
-📊 Chapters: 8 scenes
+
+### 3. Запуск пайплайна
+
+```bash
+python main.py /abs/path/to/video.mp4
 ```
+
+Если путь не передан, используется `VIDEO_SERVICE_INPUT_VIDEO_PATH` из `.env`.
 
 ## 🎯 Зачем это нужно
 

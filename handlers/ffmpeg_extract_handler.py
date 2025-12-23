@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import subprocess
 from pathlib import Path
@@ -7,63 +9,42 @@ from handlers.base_handler import BaseHandler
 
 
 class FFmpegExtractHandler(BaseHandler):
-    """Handler for extracting audio from video using FFmpeg."""
-
-    def __init__(self, temp_dir: str = "temp") -> None:
-        """
-        Initialize FFmpeg handler.
-
-        Args:
-            temp_dir: Directory to store temporary audio files.
-        """
+    def __init__(self, temp_dir: str = "temp", overwrite: bool = True) -> None:
         self.temp_dir = temp_dir
+        self.overwrite = bool(overwrite)
 
     def handle(self, context: dict[str, Any]) -> dict[str, Any]:
-        """
-        Extract audio from video file using FFmpeg.
-
-        Args:
-            context: Dictionary with 'video_path' key.
-
-        Returns:
-            Updated context with 'audio_path'.
-
-        Raises:
-            FileNotFoundError: If video file doesn't exist.
-            RuntimeError: If FFmpeg extraction fails.
-        """
         video_path = context.get("video_path")
         if not video_path:
             raise ValueError("'video_path' not provided in context")
 
-        # Create temp directory if it doesn't exist
         Path(self.temp_dir).mkdir(exist_ok=True)
 
-        # Generate output audio path
         video_name = Path(video_path).stem
-        audio_path = os.path.join(self.temp_dir, f"{video_name}.wav")
+        audio_path = str(Path(self.temp_dir) / f"{video_name}.wav")
 
-        # Run FFmpeg command
+        # Если файл уже есть и overwrite=False — используем кеш
+        if (not self.overwrite) and os.path.exists(audio_path):
+            context["audio_path"] = audio_path
+            return context
+
+        cmd = [
+            "ffmpeg",
+            "-y" if self.overwrite else "-n",
+            "-i", video_path,
+            "-vn",                 # без видео
+            "-ac", "1",            # mono
+            "-ar", "16000",        # 16kHz удобно для STT
+            "-acodec", "pcm_s16le",
+            audio_path,
+        ]
+
         try:
-            cmd = [
-                "ffmpeg",
-                "-i",
-                video_path,
-                "-q:a",
-                "9",
-                "-n",  # Don't overwrite existing files
-                audio_path,
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-        except FileNotFoundError:
-            raise RuntimeError(
-                "FFmpeg not found. Please install ffmpeg: brew install ffmpeg"
-            )
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except FileNotFoundError as e:
+            raise RuntimeError("FFmpeg not found. Install: brew install ffmpeg") from e
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"FFmpeg extraction failed: {e.stderr.decode()}")
+            raise RuntimeError(f"FFmpeg extraction failed: {e.stderr}") from e
 
         context["audio_path"] = audio_path
-
-        print(f"✓ Audio extracted: {audio_path}")
-
         return context

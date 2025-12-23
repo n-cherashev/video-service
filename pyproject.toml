@@ -1,21 +1,27 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-service"
 version = "0.1.0"
 description = "Console pipeline for video processing with handler-based architecture"
-requires-python = ">=3.8"
+requires-python = ">=3.13"
 dependencies = [
-    "numpy>=1.23.0",
-    "opencv-python>=4.8.0",
-    "librosa>=0.10.0",
-    "soundfile>=0.12.0",
+  "numpy>=1.23.0",
+  "opencv-python>=4.8.0",
+  "librosa>=0.10.0",
+  "soundfile>=0.12.0",
+  "scipy>=1.9.0",
+  "scenedetect>=0.6.0",
 ]
-
-[project.optional-dependencies]
-dev = []
 
 [tool.setuptools]
 packages = ["handlers"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]

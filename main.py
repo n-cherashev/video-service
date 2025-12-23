@@ -1,47 +1,30 @@
+import argparse
 import json
-from typing import Any, Dict, List
+import time
+from typing import Any
 
+from config import Context, VideoServiceSettings, build_initial_context
+
+from models.serde import to_jsonable
+from handlers.audio_events_handler import AudioEventsHandler
 from handlers.audio_features_handler import AudioFeaturesHandler
 from handlers.base_handler import BaseHandler
+from handlers.chapter_builder_handler import ChapterBuilderHandler
 from handlers.ffmpeg_extract_handler import FFmpegExtractHandler
-from handlers.motion_analysis_frame_diff_handler import (
-    MotionAnalysisFrameDiffHandler,
-)
-from handlers.motion_analysis_optical_flow_handler import (
-    MotionAnalysisOpticalFlowHandler,
-)
-from handlers.read_file_handler import ReadFileHandler
-from handlers.speech_to_text_handler import SpeechToTextHandler
-from handlers.sentiment_analysis_handler import SentimentAnalysisHandler
-from handlers.humor_detection_handler import HumorDetectionHandler
-from handlers.topic_segmentation_handler import TopicSegmentationHandler
-from handlers.audio_events_handler import AudioEventsHandler
-from handlers.scene_change_handler import SceneChangeHandler
+from handlers.finalize_analysis_handler import FinalizeAnalysisHandler
 from handlers.fusion_timeline_handler import FusionTimelineHandler
 from handlers.highlight_detection_handler import HighlightDetectionHandler
-from handlers.chapter_builder_handler import ChapterBuilderHandler
-from handlers.finalize_analysis_handler import FinalizeAnalysisHandler
-from handlers.shot_boundary_handler import ShotBoundaryHandler
-from handlers.scene_grouping_handler import SceneGroupingHandler
-
-
-def format_json(data: Any, indent: int = 2, max_items: int = 10) -> str:
-    """Форматирует большие списки, показывая первые и последние элементы."""
-    if isinstance(data, list) and len(data) > max_items:
-        first = data[: max_items // 2]
-        last = data[-max_items // 2 :]
-        truncated = {
-            "truncated": True,
-            "total_length": len(data),
-            "first_items": first,
-            "last_items": last,
-        }
-        return json.dumps(truncated, indent=indent, ensure_ascii=False)
-    return json.dumps(data, indent=indent, ensure_ascii=False)
+from handlers.humor_detection_handler import HumorDetectionHandler
+from handlers.motion_analysis_frame_diff_handler import MotionAnalysisFrameDiffHandler
+from handlers.read_file_handler import ReadFileHandler
+from handlers.scene_detection_handler import SceneDetectionHandler
+from handlers.sentiment_analysis_handler import SentimentAnalysisHandler
+from handlers.speech_to_text_handler import SpeechToTextHandler
+from handlers.topic_segmentation_handler import TopicSegmentationHandler
+from handlers.video_meta_handler import VideoMetaHandler
 
 
 def truncate_large_lists(obj: Any, max_items: int = 10) -> Any:
-    """Рекурсивно обрезает большие списки в объекте."""
     if isinstance(obj, list):
         if len(obj) > max_items:
             first = obj[: max_items // 2]
@@ -53,86 +36,154 @@ def truncate_large_lists(obj: Any, max_items: int = 10) -> Any:
                 "last_items": last,
             }
         return [truncate_large_lists(item, max_items) for item in obj]
-    elif isinstance(obj, dict):
+    if isinstance(obj, dict):
         return {k: truncate_large_lists(v, max_items) for k, v in obj.items()}
     return obj
 
 
-def print_summary(context: Dict[str, Any]) -> None:
-    """Выводит сводную информацию."""
+def print_summary(context: Context) -> None:
     print("\n" + "=" * 80)
-    print("📊 SUMMARY")
+    print("SUMMARY")
     print("=" * 80)
 
-    if "motion_summary" in context:
-        summary = context["motion_summary"]
-        print("🎬 Motion Analysis:")
-        print(f"   Mean motion:  {summary['mean']:.3f}")
-        print(f"   Max motion:   {summary['max']:.3f}")
-        print(f"   Seconds:      {summary['seconds']}")
+    motion = context.get("motion_summary")
+    if motion:
+        print("Motion Analysis:")
+        print(f"   Mean motion:  {motion.get('mean', 0):.3f}")
+        print(f"   Max motion:   {motion.get('max', 0):.3f}")
+        print(f"   Seconds:      {motion.get('seconds', 0)}")
 
-    if "fps" in context:
-        print(f"📹 Video FPS:     {context['fps']:.1f}")
+    fps = context.get("fps")
+    if fps is not None:
+        print(f"Video FPS:       {fps:.1f}")
 
-    if "duration_seconds" in context and context["duration_seconds"]:
-        print(f"⏱️  Duration:      {context['duration_seconds']:.1f}s")
+    duration = context.get("duration_seconds")
+    if duration:
+        print(f"Duration:        {duration:.1f}s")
 
-    if "processing_time_seconds" in context:
-        print(f"⚡ Total time:    {context.get('processing_time_seconds', 0):.2f}s")
+    total_time = context.get("processing_time_seconds")
+    if total_time is not None:
+        print(f"Total time:      {total_time:.2f}s")
+
+    highlights = context.get("highlights") or []
+    chapters = context.get("chapters") or []
+    print(f"Highlights:      {len(highlights)}")
+    print(f"Chapters:        {len(chapters)}")
+
+
+def build_handlers(settings: VideoServiceSettings) -> list[BaseHandler]:
+    handlers: list[BaseHandler] = [
+        ReadFileHandler(),
+        VideoMetaHandler(),  # <-- строго здесь: fps/duration доступны всем ниже
+        FFmpegExtractHandler(),
+
+        # Оставляем один motion-handler, иначе контекст будет противоречивым
+        MotionAnalysisFrameDiffHandler(
+            resize_width=settings.motion_resize_width,
+            frame_step=settings.motion_frame_step,
+        ),
+
+        AudioFeaturesHandler(
+            target_sr=settings.audio_target_sr,
+            window_size_ms=settings.audio_window_size_ms,
+            hop_size_ms=settings.audio_hop_size_ms,
+        ),
+        AudioEventsHandler(),
+
+        # ShotBoundaryHandler удаляем из пайплайна: он сейчас не участвует в highlights/chapters,
+        # а SceneDetectionHandler уже даёт структуру.
+        SceneDetectionHandler(
+            min_scene_duration=settings.min_scene_duration_sec,
+            detector="adaptive",
+            downscale=1,
+            frame_skip=0,
+            auto_downscale=False,
+        )
+
+    ]
+
+    if settings.enable_stt:
+        handlers.append(SpeechToTextHandler(model_name=settings.whisper_model_name))
+    if settings.enable_sentiment:
+        handlers.append(
+            SentimentAnalysisHandler(strategy="model", model_name=settings.sentiment_model_name)
+        )
+    if settings.enable_humor:
+        handlers.append(HumorDetectionHandler(model_name=settings.humor_model_name))
+
+    handlers.extend(
+        [
+            TopicSegmentationHandler(),
+            FusionTimelineHandler(
+                weight_motion=settings.weight_motion,
+                weight_audio=settings.weight_audio,
+                weight_sentiment=settings.weight_sentiment,
+                weight_humor=settings.weight_humor,
+            ),
+            HighlightDetectionHandler(
+                min_duration_seconds=settings.min_highlight_duration_sec,
+                mode="top_interest",     # <-- ключевое: берём лучшие фрагменты по interest
+                top_k=6,
+                peak_quantile=0.90,
+                snap_to_scenes=True,
+                snap_window_seconds=5.0,
+            ),
+            ChapterBuilderHandler(),
+            FinalizeAnalysisHandler(),
+        ]
+    )
+    return handlers
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Video analysis pipeline")
+    parser.add_argument(
+        "video_path",
+        nargs="?",
+        help="Путь к видеофайлу (если не указан — берётся из VIDEO_SERVICE_INPUT_VIDEO_PATH).",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
-    """Run the video processing pipeline."""
-    video_path = "/Users/nikolajcerasev/Projects/video-service/videos/mstiteli.mp4"
+    args = parse_args()
+    settings = VideoServiceSettings()
 
-    # Initialize context
-    context: Dict[str, Any] = {"input_path": video_path}
+    print(f"DEBUG: input_video_path = '{settings.input_video_path}'")
+    print(f"DEBUG: enable_stt = {settings.enable_stt}")
+    print(f"DEBUG: whisper_model_name = '{settings.whisper_model_name}'")
 
-    # Create handlers list
-    handlers: List[BaseHandler] = [
-        ReadFileHandler(),
-        FFmpegExtractHandler(),
-        MotionAnalysisFrameDiffHandler(),
-        MotionAnalysisOpticalFlowHandler(),
-        AudioFeaturesHandler(),
-        SpeechToTextHandler(),
-        SentimentAnalysisHandler(),
-        HumorDetectionHandler(),
-        TopicSegmentationHandler(),
-        AudioEventsHandler(),
-        SceneChangeHandler(),
-        ShotBoundaryHandler(),
-        SceneGroupingHandler(),
-        FusionTimelineHandler(),
-        HighlightDetectionHandler(),
-        ChapterBuilderHandler(),
-        FinalizeAnalysisHandler(),
-    ]
+    input_path = args.video_path or settings.input_video_path
+    context: Context = build_initial_context(settings=settings, input_path=input_path)
 
-    # Run pipeline
-    print("🚀 Starting video processing pipeline...")
+    handlers = build_handlers(settings)
+
+    print("Starting video processing pipeline...")
     print("-" * 50)
 
+    start = time.monotonic()
     try:
         for i, handler in enumerate(handlers, 1):
-            handler_name = handler.__class__.__name__
-            print(f"[{i:2d}/{len(handlers)}] 🔄 {handler_name}")
+            t0 = time.monotonic()
             context = handler.handle(context)
+            dt = time.monotonic() - t0
+            print(f"[{i:2d}/{len(handlers)}] {handler.name} ({dt:.2f}s)")
 
-        print("\n✅ Pipeline completed successfully!")
+        context["processing_time_seconds"] = time.monotonic() - start
+        print("\nPipeline completed successfully!")
+    except Exception as exc:
+        context["processing_time_seconds"] = time.monotonic() - start
+        print(f"\nPipeline failed: {exc}")
+        raise
 
-    except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
-        return
-
-    # Print summary
     print_summary(context)
 
-    # Print full JSON (сокращенный для больших списков)
     print("\n" + "=" * 80)
-    print("📋 FULL RESULTS (JSON)")
+    print("FULL RESULTS (JSON)")
     print("=" * 80)
-    truncated_context = truncate_large_lists(context)
+
+    jsonable_context = to_jsonable(context)
+    truncated_context = truncate_large_lists(jsonable_context)
     print(json.dumps(truncated_context, indent=2, ensure_ascii=False))
 
 

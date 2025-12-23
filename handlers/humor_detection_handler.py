@@ -8,12 +8,13 @@ from handlers.base_handler import BaseHandler
 class HumorDetectionHandler(BaseHandler):
     """Выделяет смешные моменты на основе текста."""
 
-    def __init__(self, threshold: float = 0.5) -> None:
+    def __init__(self, threshold: float = 0.5, model_name: str | None = None) -> None:
         self.threshold = threshold
+        self.model_name = model_name
 
     def handle(self, context: Dict[str, Any]) -> Dict[str, Any]:
         segments = context.get("transcript_segments", [])
-        
+
         humor_scores = []
         for seg in segments:
             text = seg["text"].lower()
@@ -34,24 +35,24 @@ class HumorDetectionHandler(BaseHandler):
 
         context["humor_scores"] = humor_scores
         context["humor_summary"] = humor_summary
-        
+
         print(f"✓ Humor: {len(humor_scores)} segments, {humor_summary['count_positive']} funny")
         return context
 
     def _calculate_humor_score(self, text: str) -> float:
         """Rule-based эвристика для определения юмора."""
         score = 0.0
-        
+
         # Прямые маркеры смеха
         laugh_markers = ["смеется", "смех в зале", "смех", "смешно", "шутка", "прикол"]
         for marker in laugh_markers:
             if marker in text:
                 score += 0.8
-        
+
         # Междометия и разговорные конструкции
         casual_markers = ["аха", "ха-ха", "лол", "чувак", "ой", "блин", "капец"]
         for marker in casual_markers:
             if marker in text:
                 score += 0.3
-        
+
         return min(score, 1.0)

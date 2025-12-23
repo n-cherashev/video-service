@@ -11,22 +11,23 @@ from handlers.motion_analysis_optical_flow_handler import (
     MotionAnalysisOpticalFlowHandler,
 )
 from handlers.read_file_handler import ReadFileHandler
+from handlers.video_meta_handler import VideoMetaHandler
 from handlers.sentiment_analysis_handler import SentimentAnalysisHandler
 from handlers.speech_to_text_handler import SpeechToTextHandler
 from handlers.humor_detection_handler import HumorDetectionHandler
 from handlers.topic_segmentation_handler import TopicSegmentationHandler
 from handlers.audio_events_handler import AudioEventsHandler
-from handlers.scene_change_handler import SceneChangeHandler
+from handlers.scene_detection_handler import SceneDetectionHandler
 from handlers.fusion_timeline_handler import FusionTimelineHandler
 from handlers.highlight_detection_handler import HighlightDetectionHandler
 from handlers.chapter_builder_handler import ChapterBuilderHandler
 from handlers.finalize_analysis_handler import FinalizeAnalysisHandler
 from handlers.shot_boundary_handler import ShotBoundaryHandler
-from handlers.scene_grouping_handler import SceneGroupingHandler
 
 __all__ = [
     "BaseHandler",
     "ReadFileHandler",
+    "VideoMetaHandler",
     "FFmpegExtractHandler",
     "AudioFeaturesHandler",
     "MotionAnalysisFrameDiffHandler",
@@ -37,9 +38,8 @@ __all__ = [
     "HumorDetectionHandler",
     "TopicSegmentationHandler",
     "AudioEventsHandler",
-    "SceneChangeHandler",
+    "SceneDetectionHandler",
     "ShotBoundaryHandler",
-    "SceneGroupingHandler",
     "FusionTimelineHandler",
     "HighlightDetectionHandler",
     "ChapterBuilderHandler",
