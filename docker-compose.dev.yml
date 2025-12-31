@@ -1,0 +1,142 @@
+# Video Service - Development Docker Compose
+#
+# Для локальной разработки с hot-reload и отладкой.
+#
+# Запуск:
+#   docker-compose -f docker-compose.dev.yml up
+#
+# Или с GPU:
+#   docker-compose -f docker-compose.dev.yml -f docker-compose.gpu.yml up
+
+services:
+  # ==========================================================================
+  # Redis
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: video-service-redis-dev
+    ports:
+      - '6379:6379'
+    networks:
+      - video-network-dev
+
+  # ==========================================================================
+  # API - с hot-reload
+  # ==========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-service-api-dev
+    ports:
+      - '8000:8000'
+    environment:
+      VIDEO_SERVICE_TEMP_DIR: /app/temp
+      VIDEO_SERVICE_OUTPUT_DIR: /app/results
+      REDIS_URL: redis://redis:6379/0
+      USE_CELERY: 'false'
+      VIDEO_SERVICE_DEVICE: cpu
+      VIDEO_SERVICE_TORCH_DEVICE: cpu
+      VIDEO_SERVICE_WHISPER_DEVICE: cpu
+      CUDA_VISIBLE_DEVICES: ''
+      TF_CPP_MIN_LOG_LEVEL: '2'
+      VIDEO_SERVICE_LLM_BASE_URL: http://host.docker.internal:11434
+      VIDEO_SERVICE_LLM_MODEL: 'qwen2.5-coder:14b'
+      VIDEO_SERVICE_ALLOWED_INPUT_DIR: /app/videos
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+    volumes:
+      # Монтируем исходники для hot-reload
+      - ./api:/app/api
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./features:/app/features
+      - ./models:/app/models
+      - ./utils:/app/utils
+      - ./io:/app/io
+      - ./main.py:/app/main.py
+      - ./temp:/app/temp
+      - ./results:/app/results
+      - ./videos:/app/videos:ro
+    depends_on:
+      - redis
+    networks:
+      - video-network-dev
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # Важно: --reload в контейнере может падать на больших нагрузках/файлах (StatReload rglob по /app).
+    # Для стабильного анализа больших видео запускаем без reload.
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+  # ==========================================================================
+  # Worker (опционально для dev)
+  # ==========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-service-worker-dev
+    profiles:
+      - worker # Запускается только с --profile worker
+    environment:
+      VIDEO_SERVICE_TEMP_DIR: /app/temp
+      VIDEO_SERVICE_OUTPUT_DIR: /app/results
+      REDIS_URL: redis://redis:6379/0
+      VIDEO_SERVICE_DEVICE: cpu
+      VIDEO_SERVICE_TORCH_DEVICE: cpu
+      VIDEO_SERVICE_WHISPER_DEVICE: cpu
+      CUDA_VISIBLE_DEVICES: ''
+      TF_CPP_MIN_LOG_LEVEL: '2'
+      VIDEO_SERVICE_LLM_BASE_URL: http://host.docker.internal:11434
+      VIDEO_SERVICE_LLM_MODEL: 'qwen2.5-coder:14b'
+      VIDEO_SERVICE_ALLOWED_INPUT_DIR: /app/videos
+    volumes:
+      - ./api:/app/api
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./features:/app/features
+      - ./models:/app/models
+      - ./utils:/app/utils
+      - ./io:/app/io
+      - ./main.py:/app/main.py
+      - ./temp:/app/temp
+      - ./results:/app/results
+      - ./videos:/app/videos:ro
+    depends_on:
+      - redis
+    networks:
+      - video-network-dev
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: celery -A api.celery_app worker --loglevel=debug --concurrency=1
+
+  # ==========================================================================
+  # Streamlit UI
+  # ==========================================================================
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-service-ui-dev
+    # Убрали profiles - UI запускается всегда вместе с API
+    ports:
+      - '0.0.0.0:8501:8501'
+    environment:
+      - API_URL=http://api:8000
+      - VIDEO_INPUT_DIR=/app/videos
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./ui:/app/ui
+      - ./videos:/app/videos:ro
+    depends_on:
+      - api
+    networks:
+      - video-network-dev
+    tty: true
+    stdin_open: true
+    # Упрощённая команда - минимум флагов
+    command: streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+
+networks:
+  video-network-dev:
+    driver: bridge

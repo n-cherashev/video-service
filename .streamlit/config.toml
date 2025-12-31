@@ -1,0 +1,15 @@
+[server]
+# Размер загрузки в MB (дефолт Streamlit: 200MB). Поднимаем для больших видео.
+maxUploadSize = 15360
+
+# Дополнительно полезно при больших ответах/JSON
+maxMessageSize = 15360
+
+# Dev/Docker stability (иначе часто "Connection error" из‑за WS/прокси/сжатия)
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+enableWebsocketCompression = false
+
+[browser]
+gatherUsageStats = false

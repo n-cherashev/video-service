@@ -1,0 +1,142 @@
+# Video Service - Production Docker Compose
+#
+# Запуск:
+#   docker-compose up -d
+#
+# С GPU:
+#   docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Остановка:
+#   docker-compose down
+
+services:
+  # ==========================================================================
+  # Redis - брокер задач для Celery и хранилище статусов
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: video-service-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-network
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru
+
+  # ==========================================================================
+  # API - FastAPI приложение
+  # ==========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video-service:latest
+    container_name: video-service-api
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    environment:
+      VIDEO_SERVICE_TEMP_DIR: /app/temp
+      VIDEO_SERVICE_OUTPUT_DIR: /app/results
+      REDIS_URL: redis://redis:6379/0
+      USE_CELERY: 'true'
+      VIDEO_SERVICE_DEVICE: cpu
+      VIDEO_SERVICE_TORCH_DEVICE: cpu
+      VIDEO_SERVICE_WHISPER_DEVICE: cpu
+      CUDA_VISIBLE_DEVICES: ''
+      TF_CPP_MIN_LOG_LEVEL: '2'
+      VIDEO_SERVICE_LLM_BASE_URL: http://host.docker.internal:11434
+      VIDEO_SERVICE_LLM_MODEL: 'qwen2.5-coder:14b'
+    volumes:
+      - temp_data:/app/temp
+      - results_data:/app/results
+      - artifacts_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=30)",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    networks:
+      - video-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  # ==========================================================================
+  # Celery Worker - обработка видео
+  # ==========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video-service:latest
+    container_name: video-service-worker
+    restart: unless-stopped
+    environment:
+      VIDEO_SERVICE_TEMP_DIR: /app/temp
+      VIDEO_SERVICE_OUTPUT_DIR: /app/results
+      REDIS_URL: redis://redis:6379/0
+      VIDEO_SERVICE_DEVICE: cpu
+      OMP_NUM_THREADS: '4'
+      VIDEO_SERVICE_TORCH_DEVICE: cpu
+      VIDEO_SERVICE_WHISPER_DEVICE: cpu
+      CUDA_VISIBLE_DEVICES: ''
+      TF_CPP_MIN_LOG_LEVEL: '2'
+      VIDEO_SERVICE_LLM_BASE_URL: http://host.docker.internal:11434
+      VIDEO_SERVICE_LLM_MODEL: 'qwen2.5-coder:14b'
+    volumes:
+      - temp_data:/app/temp
+      - results_data:/app/results
+      - artifacts_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - video-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: celery -A api.celery_app worker --loglevel=info --concurrency=1
+
+  # ==========================================================================
+  # Flower - мониторинг Celery (опционально, production ready)
+  # ==========================================================================
+  flower:
+    image: mher/flower:2.0
+    container_name: video-service-flower
+    restart: unless-stopped
+    ports:
+      - '5555:5555'
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_PORT=5555
+      - FLOWER_PURGE_OFFLINE_WORKERS=60
+    depends_on:
+      - redis
+    networks:
+      - video-network
+
+networks:
+  video-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  temp_data:
+  results_data:
+  artifacts_data:

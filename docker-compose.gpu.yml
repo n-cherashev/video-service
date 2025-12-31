@@ -1,0 +1,50 @@
+# Docker Compose Override для GPU поддержки
+#
+# Использование с production:
+#   docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Использование с dev:
+#   docker-compose -f docker-compose.dev.yml -f docker-compose.gpu.yml up
+#
+# Требования:
+#   - NVIDIA Container Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   - NVIDIA GPU с CUDA 12.x
+#
+# Проверка GPU:
+#   docker run --rm --gpus all nvidia/cuda:12.1-base nvidia-smi
+
+services:
+  api:
+    # Для docker-compose v2+ используем device_requests
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - VIDEO_SERVICE_DEVICE=cuda
+      - VIDEO_SERVICE_TORCH_DEVICE=cuda
+      - VIDEO_SERVICE_WHISPER_DEVICE=cuda
+      - VIDEO_SERVICE_COMPUTE_TYPE=float16
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+  worker:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - VIDEO_SERVICE_DEVICE=cuda
+      - VIDEO_SERVICE_TORCH_DEVICE=cuda
+      - VIDEO_SERVICE_WHISPER_DEVICE=cuda
+      - VIDEO_SERVICE_COMPUTE_TYPE=float16
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # GPU worker может работать дольше
+    command: celery -A api.celery_app worker --loglevel=info --concurrency=1 --pool=solo

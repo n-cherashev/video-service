@@ -7,7 +7,8 @@ from pydantic import Field
 
 
 class VideoServiceSettings(BaseSettings):
-    input_video_path: str = Field(..., description="Default input video path.")
+    # См. config/settings.py: путь к видео не должен быть обязательным для Settings.
+    input_video_path: str = Field("", description="Default input video path (optional).")
 
     motion_resize_width: int = Field(320)
     motion_frame_step: int = Field(1)
@@ -109,4 +110,6 @@ class Context(TypedDict, total=False):
 
 def build_initial_context(settings: VideoServiceSettings, input_path: str) -> Context:
     video_path = input_path or settings.input_video_path
+    if not video_path:
+        raise ValueError("input_path is required (or set VIDEO_SERVICE_INPUT_VIDEO_PATH)")
     return Context(input_path=video_path, video_path=video_path)
